@@ -3,18 +3,20 @@
 
 ### Overview / Gambaran Umum
 
-This project implements an Automatic Number Plate Recognition (ANPR) system using computer vision and image processing techniques. The system can detect and extract license plate numbers from vehicle images or video frames.
+This project implements an Automatic Number Plate Recognition (ANPR) system using image processing techniques. The system can detect and extract license plate numbers from vehicle images.
 
 Proyek ini mengimplementasikan sistem deteksi plat nomor otomatis menggunakan teknik computer vision dan image processing. Sistem dapat mendeteksi dan mengekstrak nomor plat kendaraan dari gambar atau frame video.
 
 ### Pipeline / Alur Proses
 
 ```
-[Input Frame]
+[Input Image]
       ↓
 [Grayscale] → reduce channels
       ↓
-[Bilateral Filter] → denoise + keep edges
+[CLAHE] → enhance contrast
+      ↓
+[Gaussian Blur] → denoise + keep edges
       ↓
 [Canny Edge Detector] → binary edges
       ↓
@@ -22,129 +24,222 @@ Proyek ini mengimplementasikan sistem deteksi plat nomor otomatis menggunakan te
       ↓
 [Filter by Area + Approximate to 4 corners]
       ↓
-[Filter by Aspect Ratio (2–8)]
+[Filter by Aspect Ratio (2–8)] → plate dimensions
       ↓
-[Crop ROI (x, y, w, h)]
+[Crop ROI (x, y, w, h)] → extract plate region
       ↓
-[EasyOCR → Text]
+[EasyOCR → Text] → character recognition
       ↓
-[Validate with Regex]
+[Validate with Regex] → verify plate format
       ↓
 [Annotate Frame + Save Results]
 ```
 
-### Detailed Process Explanation / Penjelasan Detail Proses
 
-#### 1. **Input Frame / Frame Input**
-- Menerima gambar atau frame video sebagai input
-- Format yang didukung: JPG, PNG, MP4, AVI, dll.
+###  Detailed Process Explanation / Penjelasan Detail Proses
+
+#### 1. **Input Image / Input Gambar**
+
+* **Deskripsi**: Sistem menerima gambar (JPG/PNG) atau frame dari video (MP4/AVI) sebagai masukan.
+* **Tujuan**: Menjadi sumber utama untuk mendeteksi dan mengenali plat nomor kendaraan.
+
 
 #### 2. **Grayscale Conversion / Konversi Grayscale**
-- **Tujuan**: Mengurangi kompleksitas komputasi dengan mengubah gambar RGB (3 channel) menjadi grayscale (1 channel)
-- **Metode**: Menggunakan weighted average: `Gray = 0.299*R + 0.587*G + 0.114*B`
-- **Manfaat**: Mempercepat proses dan mengurangi noise
 
-#### 3. **Bilateral Filter / Filter Bilateral**
-- **Tujuan**: Menghilangkan noise sambil mempertahankan tepi (edge) yang tajam
-- **Keunggulan**: 
-  - Smoothing pada area uniform
-  - Preservasi detail pada edges
-  - Ideal untuk preprocessing sebelum edge detection
+* **Tujuan**: Mengurangi jumlah channel dari RGB (3 channel) menjadi grayscale (1 channel).
+* **Metode**: Menggunakan rumus weighted average: `Gray = 0.299R + 0.587G + 0.114B`.
+* **Manfaat**: Mempercepat komputasi dan meningkatkan efisiensi deteksi tepi.
 
-#### 4. **Canny Edge Detection / Deteksi Tepi Canny**
-- **Tujuan**: Mendeteksi tepi/kontur objek dalam gambar
-- **Parameter**: 
-  - Lower threshold: untuk weak edges
-  - Upper threshold: untuk strong edges
-- **Output**: Binary image (hitam-putih) dengan tepi yang terdeteksi
 
-#### 5. **Find Contours / Mencari Kontur**
-- **Tujuan**: Mengekstrak bentuk-bentuk geometris dari binary image
-- **Metode**: Menggunakan algoritma kontour detection untuk menemukan garis batas objek
-- **Output**: List koordinat yang membentuk kontur
+#### 3. **CLAHE (Contrast Limited Adaptive Histogram Equalization)**
 
-#### 6. **Area Filtering & Corner Approximation / Filter Area & Aproksimasi Sudut**
-- **Filter berdasarkan area**: Menghilangkan kontur yang terlalu kecil atau terlalu besar
-- **Approximation**: Menyederhanakan kontur menjadi polygon dengan 4 titik sudut
-- **Tujuan**: Mengidentifikasi bentuk persegi panjang (karakteristik plat nomor)
+* **Tujuan**: Meningkatkan kontras lokal agar karakter pada plat lebih jelas.
+* **Keunggulan**:
 
-#### 7. **Aspect Ratio Filtering / Filter Rasio Aspek**
-- **Range**: 2:1 hingga 8:1 (lebar:tinggi)
-- **Alasan**: Plat nomor umumnya memiliki bentuk persegi panjang horizontal
-- **Contoh**: Plat Indonesia ≈ 4:1, Plat Eropa ≈ 5:1
+  * Tidak over-enhance seperti histogram global.
+  * Efektif di kondisi pencahayaan tidak merata (bayangan, pantulan).
 
-#### 8. **ROI Cropping / Pemotongan Region of Interest**
-- **Tujuan**: Mengekstrak area yang diduga sebagai plat nomor
-- **Parameter**: Koordinat (x, y) dan dimensi (width, height)
-- **Output**: Cropped image yang hanya berisi plat nomor
 
-#### 9. **OCR (Optical Character Recognition)**
-- **Library**: EasyOCR (mendukung berbagai bahasa)
-- **Tujuan**: Mengubah gambar text menjadi string text
-- **Preprocessing**: Resize, contrast enhancement, noise reduction
+#### 4. **Gaussian Blur / Perataan Gaussian**
 
-#### 10. **Regex Validation / Validasi dengan Regex**
-- **Tujuan**: Memvalidasi format nomor plat sesuai standar
-- **Contoh Pattern Indonesia**: 
-  - `[A-Z]{1,2} \d{1,4} [A-Z]{1,3}` (B 1234 ABC)
-  - `[A-Z]{2} \d{1,4} [A-Z]{1,2}` (AB 1234 CD)
+* **Tujuan**: Mengurangi noise sembari mempertahankan struktur tepi (edge).
+* **Metode**: Kernel Gaussian 3×3 atau 5×5.
+* **Hasil**: Gambar lebih halus tanpa kehilangan kontur utama.
 
-#### 11. **Annotation & Results / Anotasi & Hasil**
-- **Visualisasi**: Menggambar bounding box di sekitar plat terdeteksi
-- **Text overlay**: Menampilkan nomor plat yang berhasil dibaca
-- **Save results**: Menyimpan gambar hasil dan data text
 
-### Technical Requirements / Kebutuhan Teknis
+#### 5. **Canny Edge Detection / Deteksi Tepi Canny**
 
-#### Libraries / Pustaka:
-- **OpenCV**: Image processing dan computer vision
-- **EasyOCR**: Optical Character Recognition
-- **NumPy**: Numerical operations
-- **Matplotlib**: Visualization dan plotting
+* **Tujuan**: Mengubah hasil blur menjadi **binary edge map** (hitam-putih).
+* **Parameter**: Dua ambang batas (lower & upper threshold) untuk mendeteksi tepi kuat dan lemah.
+* **Hasil**: Tepi objek, termasuk bentuk persegi panjang plat, menjadi terlihat jelas.
 
-#### Hardware Recommendations / Rekomendasi Hardware:
-- **CPU**: Multi-core processor untuk parallel processing
-- **RAM**: Minimum 8GB untuk processing gambar resolusi tinggi
-- **GPU**: Optional, untuk accelerated OCR processing
+#### 6. **Find Contours / Mencari Kontur**
 
-### Challenges & Solutions / Tantangan & Solusi
+* **Tujuan**: Mengekstrak batas-batas bentuk dari gambar biner hasil deteksi tepi.
+* **Metode**: Menggunakan algoritma `cv2.findContours()` untuk mendapatkan list koordinat tiap bentuk.
+* **Output**: Daftar kontur kandidat yang mungkin berisi plat nomor.
 
-#### 1. **Variasi Pencahayaan**
-- **Masalah**: Overexposed atau underexposed images
-- **Solusi**: Histogram equalization, adaptive thresholding
 
-#### 2. **Sudut Pandang (Perspective)**
-- **Masalah**: Plat nomor terdistorsi karena sudut kamera
-- **Solusi**: Perspective transformation menggunakan 4-point mapping
+#### 7. **Filter by Area & Approximation / Filter Area & Aproksimasi Sudut**
 
-#### 3. **Plat Kotor atau Rusak**
-- **Masalah**: Karakter tidak jelas atau hilang
-- **Solusi**: Morphological operations, template matching
+* **Langkah 1 – Filter Area**: Menghapus kontur yang terlalu kecil/besar dibanding ukuran frame.
+* **Langkah 2 – Approximation**: Menyederhanakan kontur jadi polygon dengan 4 sudut (`cv2.approxPolyDP`).
+* **Tujuan**: Menemukan bentuk persegi panjang yang menyerupai plat nomor.
 
-#### 4. **Multiple Plates**
-- **Masalah**: Beberapa kendaraan dalam satu frame
-- **Solusi**: NMS (Non-Maximum Suppression), confidence scoring
 
-### Performance Metrics / Metrik Performa
+#### 8. **Filter by Aspect Ratio / Filter Rasio Aspek**
 
-- **Precision**: Akurasi deteksi plat nomor yang benar
-- **Recall**: Persentase plat nomor yang berhasil dideteksi
-- **Processing Time**: Waktu yang dibutuhkan per frame
-- **Character Accuracy**: Akurasi pembacaan karakter individual
+* **Tujuan**: Memastikan bentuk kandidat sesuai rasio plat kendaraan.
+* **Range Ideal**: 2:1 hingga 8:1 (lebar : tinggi).
+* **Contoh**:
 
-### Usage Examples / Contoh Penggunaan
+  * Plat Indonesia ≈ 4:1
+  * Plat Eropa ≈ 5:1
 
-```python
-# Basic usage
-detector = ANPRDetector()
-result = detector.detect_plate("input_image.jpg")
-print(f"Detected plate: {result['plate_number']}")
-```
 
-### Future Improvements / Pengembangan Selanjutnya
+#### 9. **Crop ROI (Region of Interest) / Pemotongan Area Plat**
 
-1. **Deep Learning Integration**: Menggunakan YOLO atau CNN untuk detection
-2. **Real-time Processing**: Optimisasi untuk video streaming
-3. **Multi-language Support**: Mendukung berbagai format plat internasional
-4. **Database Integration**: Penyimpanan dan pencarian data plat nomor
-5. **Mobile Application**: Implementasi pada smartphone
+* **Tujuan**: Mengambil area koordinat (x, y, w, h) dari plat yang telah lolos filter.
+* **Output**: Gambar kecil berisi hanya plat nomor, siap diproses OCR.
+
+
+#### 10. **EasyOCR Recognition / Pembacaan Teks**
+
+* **Library**: EasyOCR (GPU/CPU).
+* **Tujuan**: Mengenali karakter pada gambar plat dan mengubahnya menjadi teks.
+* **Preprocessing tambahan**: Resize, peningkatan kontras, denoise ringan.
+
+
+#### 11. **Regex Validation / Validasi Format Nomor Plat**
+
+* **Tujuan**: Memastikan hasil OCR sesuai format plat yang valid.
+* **Regex Umum Indonesia**:
+
+  * `[A-Z]{1,2}\d{1,4}[A-Z]{1,3}` → contoh: `B1234ABC`
+  * `[A-Z]{2}\d{1,4}[A-Z]{1,2}` → contoh: `AB1234CD`
+
+
+#### 12. **Annotation & Save Results / Anotasi dan Simpan Hasil**
+
+* **Visualisasi**: Menggambar bounding box pada plat terdeteksi.
+* **Overlay Teks**: Menampilkan hasil OCR yang telah divalidasi.
+* **Output Akhir**: Gambar hasil anotasi dan file teks yang berisi nomor plat.
+
+---
+
+### **Challenges / Tantangan**
+
+#### 1. **Variasi Pencahayaan (Lighting Variation)**
+
+* **Masalah**: Gambar terlalu terang (overexposed) atau terlalu gelap (underexposed).
+* **Dampak pada Image Processing**: 
+  * CLAHE bisa over-enhance dan menciptakan noise buatan
+  * Canny edge detection gagal menemukan tepi karena kontras rendah
+  * Thresholding menghasilkan binary image yang buruk
+
+#### 2. **Sudut Pandang (Perspective Distortion)**
+
+* **Masalah**: Plat nomor tampak miring atau terdistorsi karena posisi kamera.
+* **Dampak pada Image Processing**:
+  * Contour approximation gagal menghasilkan 4 corners
+  * Aspect ratio filtering menolak plat yang valid
+  * Karakter terdistorsi sehingga OCR gagal
+
+#### 3. **Noise pada Gambar (Image Noise)**
+
+* **Masalah**: Gangguan visual seperti bintik atau blur akibat pencahayaan rendah atau kamera bergerak.
+* **Dampak pada Image Processing**:
+  * Gaussian blur menghilangkan detail penting karakter
+  * Canny edge mendeteksi false edges dari noise
+  * Morphological closing tidak efektif menyambungkan edges yang benar
+
+#### 4. **Plat Kotor atau Rusak (Dirty or Damaged Plates)**
+
+* **Masalah**: Karakter sulit terbaca karena debu, lumpur, atau kerusakan fisik.
+* **Dampak pada Image Processing**:
+  * Edge detection terputus-putus
+  * Morphological operations mengubah bentuk karakter asli
+  * ROI yang di-crop mengandung banyak artifacts
+
+#### 5. **Multiple Plates dalam Satu Gambar (Multiple Plates per Frame)**
+
+* **Masalah**: Lebih dari satu kendaraan muncul dalam satu frame.
+* **Dampak pada Image Processing**:
+  * Find contours mendeteksi banyak kandidat
+  * Perlu additional filtering logic untuk memilih plat yang benar
+  * Computational cost meningkat untuk processing semua kandidat
+
+#### 6. **Refleksi dan Glare (Reflections and Glare)**
+
+* **Masalah**: Pantulan cahaya matahari atau lampu pada permukaan plat nomor yang mengkilap.
+* **Dampak pada Image Processing**:
+  * Area terang ekstrim menyebabkan loss of detail
+  * CLAHE tidak efektif pada area over-saturated
+  * Edge detection gagal pada region yang blown-out
+
+#### 7. **Bayangan (Shadows)**
+
+* **Masalah**: Bayangan dari frame plat atau objek lain menutupi sebagian karakter.
+* **Dampak pada Image Processing**:
+  * Kontras tidak merata antara area bayangan dan terang
+  * Thresholding tidak optimal untuk seluruh region
+  * Edge detection menghasilkan discontinuous edges
+
+#### 8. **Motion Blur**
+
+* **Masalah**: Kendaraan bergerak cepat menghasilkan blur pada plat nomor.
+* **Dampak pada Image Processing**:
+  * Edges menjadi tidak tajam dan lebar
+  * Gaussian blur memperburuk keadaan
+  * Canny threshold perlu disesuaikan tetapi menimbulkan false positives
+
+#### 9. **Kontras Rendah antara Karakter dan Background (Low Contrast)**
+
+* **Masalah**: Warna karakter dan background plat terlalu mirip.
+* **Dampak pada Image Processing**:
+  * CLAHE kurang efektif meningkatkan separation
+  * Edge detection gagal menemukan boundary karakter
+  * Binary thresholding tidak bisa memisahkan foreground/background
+
+#### 10. **Ukuran Plat Terlalu Kecil atau Besar (Scale Variation)**
+
+* **Masalah**: Plat nomor terlalu kecil (jauh) atau terlalu besar (dekat) dalam frame.
+* **Dampak pada Image Processing**:
+  * Area filtering menolak plat yang terlalu kecil/besar
+  * Resolution ROI terlalu rendah untuk OCR
+  * Edge detection parameter tidak universal untuk semua scale
+
+#### 11. **Background Noise Kompleks (Cluttered Background)**
+
+* **Masalah**: Background ramai dengan objek, teks, atau pattern lain.
+* **Dampak pada Image Processing**:
+  * Find contours mendeteksi ratusan false positives
+  * Area dan aspect ratio filtering tidak cukup untuk eliminasi
+  * Processing time meningkat drastis
+
+#### 12. **Tekstur Plat yang Beragam (Plate Texture Variation)**
+
+* **Masalah**: Plat embossed, printed, atau dengan coating berbeda.
+* **Dampak pada Image Processing**:
+  * Edge detection menghasilkan double edges pada embossed plates
+  * Refleksi berbeda-beda memerlukan adaptive preprocessing
+  * Single parameter set tidak optimal untuk semua jenis
+
+
+#### 13. **Oklusif Parsial (Partial Occlusion)**
+
+* **Masalah**: Sebagian plat tertutup bumper, stiker, atau objek lain.
+* **Dampak pada Image Processing**:
+  * Contour tidak membentuk rectangle lengkap
+  * Area filtering bisa menolak plat yang valid
+  * ROI yang di-crop incomplete
+
+#### 14. **Variasi Warna Plat (Color Variation)**
+
+* **Masalah**: Plat hitam, kuning, merah, putih memiliki karakteristik berbeda.
+* **Dampak pada Image Processing**:
+  * Grayscale conversion menghasilkan kontras berbeda per warna
+  * Single threshold/parameter tidak optimal untuk semua
+  * Perlu adaptive processing berdasarkan color analysis
+
+---
