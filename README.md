@@ -102,29 +102,6 @@ Proyek ini mengimplementasikan sistem deteksi plat nomor otomatis menggunakan te
 * **Tujuan**: Mengambil area koordinat (x, y, w, h) dari plat yang telah lolos filter.
 * **Output**: Gambar kecil berisi hanya plat nomor, siap diproses OCR.
 
-
-#### 10. **EasyOCR Recognition / Pembacaan Teks**
-
-* **Library**: EasyOCR (GPU/CPU).
-* **Tujuan**: Mengenali karakter pada gambar plat dan mengubahnya menjadi teks.
-* **Preprocessing tambahan**: Resize, peningkatan kontras, denoise ringan.
-
-
-#### 11. **Regex Validation / Validasi Format Nomor Plat**
-
-* **Tujuan**: Memastikan hasil OCR sesuai format plat yang valid.
-* **Regex Umum Indonesia**:
-
-  * `[A-Z]{1,2}\d{1,4}[A-Z]{1,3}` → contoh: `B1234ABC`
-  * `[A-Z]{2}\d{1,4}[A-Z]{1,2}` → contoh: `AB1234CD`
-
-
-#### 12. **Annotation & Save Results / Anotasi dan Simpan Hasil**
-
-* **Visualisasi**: Menggambar bounding box pada plat terdeteksi.
-* **Overlay Teks**: Menampilkan hasil OCR yang telah divalidasi.
-* **Output Akhir**: Gambar hasil anotasi dan file teks yang berisi nomor plat.
-
 ---
 
 ### **Challenges / Tantangan**
