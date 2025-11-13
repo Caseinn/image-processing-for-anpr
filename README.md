@@ -27,12 +27,6 @@ Proyek ini mengimplementasikan sistem deteksi plat nomor otomatis menggunakan te
 [Filter by Aspect Ratio (2–8)] → plate dimensions
       ↓
 [Crop ROI (x, y, w, h)] → extract plate region
-      ↓
-[EasyOCR → Text] → character recognition
-      ↓
-[Validate with Regex] → verify plate format
-      ↓
-[Annotate Frame + Save Results]
 ```
 
 
