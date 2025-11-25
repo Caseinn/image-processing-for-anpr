@@ -1,0 +1,14 @@
+=== Overall IoU Evaluation Metrics ===
+
+IoU Threshold: 0.5
+
+Total Detections: 79
+Total Ground Truths: 197
+True Positives (TP): 32
+False Positives (FP): 47
+False Negatives (FN): 165
+
+Precision: 0.4051
+Recall: 0.1624
+F1-Score: 0.2319
+Mean IoU: 0.8406

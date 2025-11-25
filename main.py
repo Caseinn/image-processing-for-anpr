@@ -114,6 +114,129 @@ def run_easyocr_on_roi(roi_bgr, min_conf=0.3, validate_regex=True):
     return best_text, best_conf, best_box
 
 # ----------------------------
+# IoU Evaluation Functions
+def load_yolo_labels(label_path, img_width, img_height):
+    """Load YOLO format labels and convert to pixel coordinates.
+    Returns list of bounding boxes: [(x1, y1, x2, y2), ...]
+    """
+    boxes = []
+    if not os.path.exists(label_path):
+        return boxes
+    
+    with open(label_path, 'r') as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) < 5:
+                continue
+            
+            # YOLO format: class x_center y_center width height (normalized)
+            cls, x_center, y_center, width, height = map(float, parts[:5])
+            
+            # Convert to pixel coordinates
+            x_center_px = x_center * img_width
+            y_center_px = y_center * img_height
+            width_px = width * img_width
+            height_px = height * img_height
+            
+            # Convert to x1, y1, x2, y2
+            x1 = int(x_center_px - width_px / 2)
+            y1 = int(y_center_px - height_px / 2)
+            x2 = int(x_center_px + width_px / 2)
+            y2 = int(y_center_px + height_px / 2)
+            
+            boxes.append((x1, y1, x2, y2))
+    
+    return boxes
+
+def calculate_iou(box1, box2):
+    """Calculate IoU between two boxes.
+    box format: (x1, y1, x2, y2)
+    """
+    x1_inter = max(box1[0], box2[0])
+    y1_inter = max(box1[1], box2[1])
+    x2_inter = min(box1[2], box2[2])
+    y2_inter = min(box1[3], box2[3])
+    
+    if x2_inter < x1_inter or y2_inter < y1_inter:
+        return 0.0
+    
+    intersection = (x2_inter - x1_inter) * (y2_inter - y1_inter)
+    
+    area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
+    union = area1 + area2 - intersection
+    
+    if union == 0:
+        return 0.0
+    
+    return intersection / union
+
+def match_detections_to_ground_truth(detected_boxes, ground_truth_boxes, iou_threshold=0.5):
+    """Match detected boxes to ground truth boxes using IoU.
+    Returns: (matched_pairs, unmatched_detections, unmatched_ground_truths)
+    matched_pairs: list of (detected_idx, gt_idx, iou)
+    """
+    matched_pairs = []
+    matched_detections = set()
+    matched_gts = set()
+    
+    # For each ground truth, find best matching detection
+    for gt_idx, gt_box in enumerate(ground_truth_boxes):
+        best_iou = 0.0
+        best_det_idx = -1
+        
+        for det_idx, det_box in enumerate(detected_boxes):
+            if det_idx in matched_detections:
+                continue
+            
+            iou = calculate_iou(det_box, gt_box)
+            if iou > best_iou and iou >= iou_threshold:
+                best_iou = iou
+                best_det_idx = det_idx
+        
+        if best_det_idx >= 0:
+            matched_pairs.append((best_det_idx, gt_idx, best_iou))
+            matched_detections.add(best_det_idx)
+            matched_gts.add(gt_idx)
+    
+    unmatched_detections = [i for i in range(len(detected_boxes)) if i not in matched_detections]
+    unmatched_gts = [i for i in range(len(ground_truth_boxes)) if i not in matched_gts]
+    
+    return matched_pairs, unmatched_detections, unmatched_gts
+
+def evaluate_iou_metrics(all_image_results, iou_threshold=0.5):
+    """Calculate overall metrics from all images.
+    Returns: dict with precision, recall, f1, mAP
+    """
+    total_tp = 0
+    total_fp = 0
+    total_fn = 0
+    all_ious = []
+    
+    for result in all_image_results:
+        total_tp += result['true_positives']
+        total_fp += result['false_positives']
+        total_fn += result['false_negatives']
+        all_ious.extend(result['matched_ious'])
+    
+    precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
+    recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+    mean_iou = np.mean(all_ious) if all_ious else 0.0
+    
+    return {
+        'precision': precision,
+        'recall': recall,
+        'f1_score': f1,
+        'mean_iou': mean_iou,
+        'total_tp': total_tp,
+        'total_fp': total_fp,
+        'total_fn': total_fn,
+        'total_detections': total_tp + total_fp,
+        'total_ground_truths': total_tp + total_fn
+    }
+
+# ----------------------------
 # CROPPING (FIRST PASS) — returns list of (source_image_basename, crop_path)
 def extract_and_save_crops_only(image, contour_info, base_name, crops_dir, source_image_path):
     saved_pairs = []  # (src_name, crop_path)
@@ -128,12 +251,12 @@ def extract_and_save_crops_only(image, contour_info, base_name, crops_dir, sourc
         saved_pairs.append((os.path.basename(source_image_path), crop_path))
     return saved_pairs
 
-def process_image_for_crops(image_path, crops_dir, area_range, aspect_range, clahe_clip, clahe_grid):
-    """Detect candidates and save crops only. Returns list of (source_image, crop_path)."""
+def process_image_for_crops(image_path, crops_dir, area_range, aspect_range, clahe_clip, clahe_grid, labels_dir=None, iou_threshold=0.5):
+    """Detect candidates and save crops only. Returns list of (source_image, crop_path) and evaluation result."""
     image = cv2.imread(image_path)
     if image is None:
         print(f"[WARN] Cannot read image {image_path}")
-        return []
+        return [], None
 
     edges = preprocess_frame(image, clahe_clip, clahe_grid)
     frame_area = image.shape[0] * image.shape[1]
@@ -143,8 +266,39 @@ def process_image_for_crops(image_path, crops_dir, area_range, aspect_range, cla
     base_name = os.path.splitext(os.path.basename(image_path))[0]
     saved_pairs = extract_and_save_crops_only(image, filtered, base_name, crops_dir, image_path)
 
-    print(f"[INFO] {os.path.basename(image_path)}: edges={len(candidates)} valid={len(filtered)} saved={len(saved_pairs)}")
-    return saved_pairs
+    # IoU Evaluation
+    eval_result = None
+    if labels_dir:
+        label_path = os.path.join(labels_dir, f"{base_name}.txt")
+        img_height, img_width = image.shape[:2]
+        ground_truth_boxes = load_yolo_labels(label_path, img_width, img_height)
+        
+        # Convert detected contours to bounding boxes
+        detected_boxes = [(x, y, x + w, y + h) for _, (x, y, w, h) in filtered]
+        
+        # Match detections to ground truth
+        matched_pairs, unmatched_dets, unmatched_gts = match_detections_to_ground_truth(
+            detected_boxes, ground_truth_boxes, iou_threshold
+        )
+        
+        matched_ious = [iou for _, _, iou in matched_pairs]
+        
+        eval_result = {
+            'image_name': os.path.basename(image_path),
+            'num_detections': len(detected_boxes),
+            'num_ground_truths': len(ground_truth_boxes),
+            'true_positives': len(matched_pairs),
+            'false_positives': len(unmatched_dets),
+            'false_negatives': len(unmatched_gts),
+            'matched_ious': matched_ious,
+            'mean_iou': np.mean(matched_ious) if matched_ious else 0.0
+        }
+        
+        print(f"[INFO] {os.path.basename(image_path)}: det={len(detected_boxes)} gt={len(ground_truth_boxes)} TP={len(matched_pairs)} FP={len(unmatched_dets)} FN={len(unmatched_gts)} mIoU={eval_result['mean_iou']:.3f}")
+    else:
+        print(f"[INFO] {os.path.basename(image_path)}: edges={len(candidates)} valid={len(filtered)} saved={len(saved_pairs)}")
+    
+    return saved_pairs, eval_result
 
 # ----------------------------
 # OCR (SECOND PASS) — iterate over saved crops and write CSV rows
@@ -182,12 +336,14 @@ def ocr_saved_crops_and_write_csv(saved_pairs, csv_path):
 # ----------------------------
 def main():
     images_dir = "data/images"
+    labels_dir = "data/labels"  # Ground truth labels
     output_dir = "output"
     exts = [".jpg", ".jpeg", ".png"]
 
     min_rel_area, max_rel_area = 0.0005, 0.3
     min_aspect, max_aspect = 2.0, 8.0
     clahe_clip, clahe_grid = 2, 8
+    iou_threshold = 0.5  # IoU threshold for matching
 
     os.makedirs(output_dir, exist_ok=True)
     crops_dir = ensure_output_dirs(output_dir)
@@ -197,24 +353,85 @@ def main():
         print(f"[WARN] No images found in {images_dir}")
         return
 
+    # Check if labels directory exists
+    evaluate_iou = os.path.exists(labels_dir)
+    if evaluate_iou:
+        print(f"[INFO] Labels found. IoU evaluation will be performed.")
+    else:
+        print(f"[WARN] No labels directory found at {labels_dir}. Skipping IoU evaluation.")
+
     # First pass: detect & save ALL crops
     all_saved_pairs = []  # list of (source_image_name, crop_path)
+    all_eval_results = []  # IoU evaluation results
+    
     for image_path in images:
-        pairs = process_image_for_crops(
+        pairs, eval_result = process_image_for_crops(
             image_path,
             crops_dir,
             (min_rel_area, max_rel_area),
             (min_aspect, max_aspect),
             clahe_clip,
             clahe_grid,
+            labels_dir if evaluate_iou else None,
+            iou_threshold
         )
         all_saved_pairs.extend(pairs)
+        if eval_result:
+            all_eval_results.append(eval_result)
 
     # Second pass: OCR all saved crops & write CSV
     csv_path = os.path.join(output_dir, "plates.csv")
     ocr_saved_crops_and_write_csv(all_saved_pairs, csv_path)
 
     print(f"[OK] CSV saved to {csv_path}")
+    
+    # Save IoU evaluation results
+    if all_eval_results:
+        eval_csv_path = os.path.join(output_dir, "iou_evaluation.csv")
+        with open(eval_csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "image_name", "num_detections", "num_ground_truths", 
+                "true_positives", "false_positives", "false_negatives", "mean_iou"
+            ])
+            
+            for result in all_eval_results:
+                writer.writerow([
+                    result['image_name'],
+                    result['num_detections'],
+                    result['num_ground_truths'],
+                    result['true_positives'],
+                    result['false_positives'],
+                    result['false_negatives'],
+                    f"{result['mean_iou']:.4f}"
+                ])
+        
+        # Calculate overall metrics
+        overall_metrics = evaluate_iou_metrics(all_eval_results, iou_threshold)
+        
+        # Save overall metrics
+        metrics_path = os.path.join(output_dir, "overall_metrics.txt")
+        with open(metrics_path, "w", encoding="utf-8") as f:
+            f.write("=== Overall IoU Evaluation Metrics ===\n\n")
+            f.write(f"IoU Threshold: {iou_threshold}\n\n")
+            f.write(f"Total Detections: {overall_metrics['total_detections']}\n")
+            f.write(f"Total Ground Truths: {overall_metrics['total_ground_truths']}\n")
+            f.write(f"True Positives (TP): {overall_metrics['total_tp']}\n")
+            f.write(f"False Positives (FP): {overall_metrics['total_fp']}\n")
+            f.write(f"False Negatives (FN): {overall_metrics['total_fn']}\n\n")
+            f.write(f"Precision: {overall_metrics['precision']:.4f}\n")
+            f.write(f"Recall: {overall_metrics['recall']:.4f}\n")
+            f.write(f"F1-Score: {overall_metrics['f1_score']:.4f}\n")
+            f.write(f"Mean IoU: {overall_metrics['mean_iou']:.4f}\n")
+        
+        print(f"\n=== IoU Evaluation Results ===")
+        print(f"Precision: {overall_metrics['precision']:.4f}")
+        print(f"Recall: {overall_metrics['recall']:.4f}")
+        print(f"F1-Score: {overall_metrics['f1_score']:.4f}")
+        print(f"Mean IoU: {overall_metrics['mean_iou']:.4f}")
+        print(f"TP: {overall_metrics['total_tp']}, FP: {overall_metrics['total_fp']}, FN: {overall_metrics['total_fn']}")
+        print(f"\n[OK] IoU evaluation saved to {eval_csv_path}")
+        print(f"[OK] Overall metrics saved to {metrics_path}")
 
 if __name__ == "__main__":
     main()

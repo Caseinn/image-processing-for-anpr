@@ -5,7 +5,7 @@ test009.jpg,output\crops\test009_01.png,16/9,0.4869
 test010.jpg,output\crops\test010_01.png,,
 test010.jpg,output\crops\test010_02.png,B9616PCN,0.8418
 test011.jpg,output\crops\test011_01.png,,
-test011.jpg,output\crops\test011_02.png,LUI,0.1470
+test011.jpg,output\crops\test011_02.png,LUI,0.1330
 test011.jpg,output\crops\test011_03.png,,
 test012.jpg,output\crops\test012_01.png,,
 test012.jpg,output\crops\test012_02.png,,
@@ -52,7 +52,7 @@ test067.jpg,output\crops\test067_01.png,BR,1.0000
 test069.jpg,output\crops\test069_01.png,AA7138,0.5888
 test070.jpg,output\crops\test070_01.png,"B2160,TOB",0.5535
 test071.jpg,output\crops\test071_01.png,,
-test073.jpg,output\crops\test073_01.png,7187HB,0.4470
+test073.jpg,output\crops\test073_01.png,7187HB,0.4607
 test074.jpg,output\crops\test074_01.png,,
 test075.jpg,output\crops\test075_01.png,,
 test075.jpg,output\crops\test075_02.png,,
@@ -75,6 +75,6 @@ test086.jpg,output\crops\test086_01.png,B,0.9992
 test088.jpg,output\crops\test088_01.png,B1902,0.5047
 test088.jpg,output\crops\test088_02.png,B2190TYB],0.3412
 test088.jpg,output\crops\test088_03.png,LALAMOVE,0.9999
-test091.jpg,output\crops\test091_01.png,B9721KXV,0.9762
+test091.jpg,output\crops\test091_01.png,B9721KXV,0.9720
 test094.jpg,output\crops\test094_01.png,CL79,0.2856
 test095.jpg,output\crops\test095_01.png,12.27,0.9621
