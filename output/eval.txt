@@ -1,6 +1,6 @@
 === Overall IoU Evaluation Metrics ===
 
-IoU Threshold: 0.5
+IoU Threshold: 0.50
 
 Total Detections: 79
 Total Ground Truths: 197
