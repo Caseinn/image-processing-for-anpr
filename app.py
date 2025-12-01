@@ -182,7 +182,8 @@ with gr.Blocks(
             annotated_out = gr.Image(
                 label="Detections (with bounding boxes)",
                 type="numpy",
-                height=500
+                height=500,
+                format="png"
             )
 
     with gr.Row():
@@ -192,6 +193,7 @@ with gr.Blocks(
             elem_id="crop-gallery",
             columns=3,
             height="auto",
+            format="png"
         )
 
     with gr.Row():
@@ -200,7 +202,8 @@ with gr.Blocks(
             show_label=True,
             columns=4,
             height=280,
-            preview=False
+            preview=False,
+            format="png"
         )
         bbox_table = gr.Dataframe(
             headers=["id", "x", "y", "w", "h"],
