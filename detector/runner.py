@@ -20,7 +20,7 @@ def run():
         name = os.path.splitext(os.path.basename(path))[0]
         img = cv2.imread(path)
 
-        vis, boxes = detect(img, cfg)
+        vis, boxes, _ = detect(img, cfg)
         det_boxes = [(x, y, x + w, y + h) for _, (x, y, w, h) in boxes]
 
         # save crops

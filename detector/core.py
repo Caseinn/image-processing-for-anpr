@@ -3,12 +3,6 @@ import os
 import cv2
 import numpy as np
 
-def preprocess(img, clip, grid, ksize, canny_low, canny_high):
-    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    g = cv2.createCLAHE(clipLimit=clip, tileGridSize=(grid, grid)).apply(g)
-    g = cv2.GaussianBlur(g, (ksize, ksize), 0)
-    return cv2.Canny(g, canny_low, canny_high)
-
 def find_candidates(edges, area, amin, amax, eps):
     cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     out = []
@@ -46,9 +40,15 @@ def save_crops(img, boxes, base, out_folder):
 
 def detect(img, cfg):
     H, W = img.shape[:2]
-    edges = preprocess(img, cfg["clahe_clip"], cfg["clahe_grid"], cfg["gauss_kernel"], cfg["canny_low"], cfg["canny_high"])
-    area = H * W
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    clahe_img = cv2.createCLAHE(clipLimit=cfg["clahe_clip"], tileGridSize=(cfg["clahe_grid"], cfg["clahe_grid"])).apply(gray)
+    k = cfg["gauss_kernel"]
+    blur = cv2.GaussianBlur(clahe_img, (k, k), 0)
+    edges = cv2.Canny(blur, cfg["canny_low"], cfg["canny_high"])
 
+    cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    area = H * W
     cands = find_candidates(edges, area, *cfg["area_range"], cfg["approx_eps"])
     boxes = filter_aspect(cands, *cfg["aspect_range"])
 
@@ -56,4 +56,13 @@ def detect(img, cfg):
     for _, (x, y, w, h) in boxes:
         cv2.rectangle(vis, (x, y), (x+w, y+h), (0, 255, 0), 2)
 
-    return vis, boxes
+    pipeline = {
+        "gray": gray,
+        "clahe": clahe_img,
+        "blur": blur,
+        "edges": edges,
+        "contours": cnts,
+        "candidates": cands,
+        "boxes": boxes,
+    }
+    return vis, boxes, pipeline

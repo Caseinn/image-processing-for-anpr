@@ -13,6 +13,7 @@ import gradio as gr
 import numpy as np
 
 from detector.config import load_config
+from detector.core import detect
 
 
 def to_rgb(img: np.ndarray) -> np.ndarray:
@@ -32,79 +33,37 @@ def to_bgr(img: np.ndarray) -> np.ndarray:
 def build_pipeline_steps(
     img_bgr: np.ndarray, cfg: dict
 ) -> Tuple[List[Tuple[str, np.ndarray]], List[Tuple[np.ndarray, Tuple[int, int, int, int]]]]:
-    """Run the same detection steps as runner.detect but keep every stage."""
+    """Run detection via core.detect and build step visualizations from pipeline data."""
+    _, boxes, pipeline = detect(img_bgr, cfg)
+
     steps: List[Tuple[str, np.ndarray]] = []
 
-    # 1) Grayscale
-    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    steps.append(("Grayscale", to_rgb(gray)))
+    steps.append(("Grayscale", to_rgb(pipeline["gray"])))
+    steps.append(("CLAHE", to_rgb(pipeline["clahe"])))
+    steps.append(("Gaussian Blur", to_rgb(pipeline["blur"])))
+    steps.append(("Canny Edges", to_rgb(pipeline["edges"])))
 
-    # 2) CLAHE
-    clahe = cv2.createCLAHE(
-        clipLimit=cfg["clahe_clip"],
-        tileGridSize=(cfg["clahe_grid"], cfg["clahe_grid"]),
-    )
-    gray_eq = clahe.apply(gray)
-    steps.append(("CLAHE", to_rgb(gray_eq)))
-
-    # 3) Gaussian Blur
-    k = cfg["gauss_kernel"]
-    blur = cv2.GaussianBlur(gray_eq, (k, k), 0)
-    steps.append(("Gaussian Blur", to_rgb(blur)))
-
-    # 4) Canny Edges
-    edges = cv2.Canny(blur, cfg["canny_low"], cfg["canny_high"])
-    steps.append(("Canny Edges", to_rgb(edges)))
-
-    # 5) All contours
-    cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contour_img = img_bgr.copy()
-    cv2.drawContours(contour_img, cnts, -1, (0, 255, 255), 2)
+    cv2.drawContours(contour_img, pipeline["contours"], -1, (0, 255, 255), 2)
     steps.append(("All Contours", to_rgb(contour_img)))
 
-    # 6) Area filter + quadrilateral candidates
-    area_min, area_max = cfg["area_range"]
-    img_area = img_bgr.shape[0] * img_bgr.shape[1]
-    quad_candidates: List[np.ndarray] = []
-
-    for c in cnts:
-        area = cv2.contourArea(c)
-        if area < img_area * area_min or area > img_area * area_max:
-            continue
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, cfg["approx_eps"] * peri, True)
-        if len(approx) == 4:
-            quad_candidates.append(approx)
-
     area_vis = img_bgr.copy()
-    cv2.drawContours(area_vis, quad_candidates, -1, (0, 255, 0), 2)
+    cv2.drawContours(area_vis, pipeline["candidates"], -1, (0, 255, 0), 2)
     steps.append(("Area Filter + 4 Corners", to_rgb(area_vis)))
 
-    # 7) Aspect ratio filter
-    asp_min, asp_max = cfg["aspect_range"]
-    final_boxes: List[Tuple[np.ndarray, Tuple[int, int, int, int]]] = []
     aspect_vis = img_bgr.copy()
-
-    for c in quad_candidates:
-        x, y, w, h = cv2.boundingRect(c)
-        if h == 0:
-            continue
-        aspect = w / float(h)
-        if asp_min <= aspect <= asp_max:
-            final_boxes.append((c, (x, y, w, h)))
-            cv2.rectangle(aspect_vis, (x, y), (x + w, y + h), (255, 0, 0), 2)
-
+    for _, (x, y, w, h) in pipeline["boxes"]:
+        cv2.rectangle(aspect_vis, (x, y), (x + w, y + h), (255, 0, 0), 2)
     steps.append(("Aspect Filtered", to_rgb(aspect_vis)))
 
-    # 8) Crop preview (first valid box or full image as fallback)
-    if final_boxes:
-        _, (x, y, w, h) = final_boxes[0]
+    if pipeline["boxes"]:
+        _, (x, y, w, h) = pipeline["boxes"][0]
         crop_preview = img_bgr[y : y + h, x : x + w]
     else:
         crop_preview = img_bgr
     steps.append(("Crop Preview", to_rgb(crop_preview)))
 
-    return steps, final_boxes
+    return steps, pipeline["boxes"]
 
 
 def run_extraction(
