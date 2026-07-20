@@ -11,6 +11,16 @@
 
 Pipeline deteksi plat nomor kendaraan berbasis contour detection dan geometric filtering. Pure OpenCV, zero ML.
 
+> **Tugas Besar** Mata Kuliah Pengolahan Citra Digital — Teknik Informatika, Institut Teknologi Sumatera
+>
+> | NIM | Nama |
+> |---|---|
+> | 122140086 | Cici Tri Fadila |
+> | 122140122 | Alfajar |
+> | 122140153 | Dito Rifki Irawan |
+> | 122140201 | Ayu Jannati Ali Putri |
+> | 122140208 | Sikah Nubuahtul Ilmi |
+
 ## Latar Belakang
 
 Buat apa susah-susah pake computer vision klasik kalo tinggal colok YOLO? Karena ini proyek edukasi — demonstrasi bahwa teknik dasar image processing masih relevan dan penting dipahami. Grayscale, adaptive histogram, edge detection, contour analysis — semuanya dijalankan tanpa training, tanpa inference, tanpa model weights.
