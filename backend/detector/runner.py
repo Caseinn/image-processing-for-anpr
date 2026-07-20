@@ -16,13 +16,19 @@ from .eval import load_labels, match, metrics
 def run():
     """Execute the full ANPR pipeline over the configured image set.
 
-    For each image:
+    Loads pipeline configuration, processes every image in the input
+    directory, saves cropped plate regions, evaluates detections
+    against ground-truth labels, and writes an aggregate metrics
+    report.
+
+    Per-image workflow:
         1. Run plate detection via :func:`detector.core.detect`.
         2. Save extracted plate crops as PNG files.
         3. Evaluate detections against ground-truth labels.
         4. Aggregate results and write a report to ``output/eval.txt``.
 
-    Pipeline configuration is loaded from :func:`detector.config.load_config`.
+    Pipeline configuration is loaded from
+    :func:`detector.config.load_config`.
     """
     cfg = load_config()
 

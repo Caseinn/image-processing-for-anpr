@@ -1,10 +1,11 @@
 """Core detection pipeline for ANPR.
 
-Provides functions for contour-based license plate detection including
+Provides contour-based license plate detection functions including
 preprocessing, candidate filtering, and crop extraction.
 """
 
 import os
+
 import cv2
 import numpy as np
 
@@ -90,22 +91,22 @@ def save_crops(img, boxes, base, out_folder):
 def detect(img, cfg):
     """Run the full plate detection pipeline on a single image.
 
-    Pipeline steps: grayscale -> CLAHE -> Gaussian blur -> Canny edge
-    detection -> contour finding -> area/quadrilateral filter -> aspect
-    ratio filter.
+    Pipeline order: grayscale conversion, CLAHE, Gaussian blur, Canny
+    edge detection, contour finding, area and quadrilateral filtering,
+    and aspect ratio filtering.
 
     Args:
         img (np.ndarray): Input BGR image.
-        cfg (dict): Configuration dictionary (from load_config).
+        cfg (dict): Configuration dictionary from ``load_config``.
 
     Returns:
         tuple[np.ndarray, list, dict]:
             - vis: Annotated image with detected plates outlined in
               green.
-            - boxes: List of (contour, (x, y, w, h)) for each detected
-              plate.
-            - pipeline: Dictionary of intermediate results
-              (gray, clahe, blur, edges, contours, candidates, boxes).
+            - boxes: List of (contour, (x, y, w, h)) tuples for each
+              detected plate.
+            - pipeline: Dict of intermediate results (gray, clahe, blur,
+              edges, contours, candidates, boxes).
     """
     H, W = img.shape[:2]
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

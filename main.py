@@ -8,7 +8,7 @@ all images in ``data/images/``, saves detected plate crops to
 ``output/crops/``, and writes evaluation metrics to ``output/eval.txt``.
 """
 
-from detector.runner import run
+from backend.detector.runner import run
 
 if __name__ == "__main__":
     run()
