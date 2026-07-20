@@ -10,5 +10,9 @@ def load_config():
         "aspect_range": (2.0, 8.0),
         "clahe_clip": 2.0,
         "clahe_grid": 8,
+        "gauss_kernel": 5,
+        "canny_low": 50,
+        "canny_high": 200,
+        "approx_eps": 0.02,
         "iou_thr": 0.5,
     }

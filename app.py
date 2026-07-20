@@ -48,11 +48,12 @@ def build_pipeline_steps(
     steps.append(("CLAHE", to_rgb(gray_eq)))
 
     # 3) Gaussian Blur
-    blur = cv2.GaussianBlur(gray_eq, (5, 5), 0)
+    k = cfg["gauss_kernel"]
+    blur = cv2.GaussianBlur(gray_eq, (k, k), 0)
     steps.append(("Gaussian Blur", to_rgb(blur)))
 
     # 4) Canny Edges
-    edges = cv2.Canny(blur, 50, 200)
+    edges = cv2.Canny(blur, cfg["canny_low"], cfg["canny_high"])
     steps.append(("Canny Edges", to_rgb(edges)))
 
     # 5) All contours
@@ -71,7 +72,7 @@ def build_pipeline_steps(
         if area < img_area * area_min or area > img_area * area_max:
             continue
         peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+        approx = cv2.approxPolyDP(c, cfg["approx_eps"] * peri, True)
         if len(approx) == 4:
             quad_candidates.append(approx)
 

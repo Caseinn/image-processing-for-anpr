@@ -3,13 +3,13 @@ import os
 import cv2
 import numpy as np
 
-def preprocess(img, clip, grid):
+def preprocess(img, clip, grid, ksize, canny_low, canny_high):
     g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     g = cv2.createCLAHE(clipLimit=clip, tileGridSize=(grid, grid)).apply(g)
-    g = cv2.GaussianBlur(g, (5, 5), 0)
-    return cv2.Canny(g, 50, 200)
+    g = cv2.GaussianBlur(g, (ksize, ksize), 0)
+    return cv2.Canny(g, canny_low, canny_high)
 
-def find_candidates(edges, area, amin, amax):
+def find_candidates(edges, area, amin, amax, eps):
     cnts, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     out = []
     for c in cnts:
@@ -17,7 +17,7 @@ def find_candidates(edges, area, amin, amax):
         if a < area * amin or a > area * amax:
             continue
         peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+        approx = cv2.approxPolyDP(c, eps * peri, True)
         if len(approx) == 4:
             out.append(approx)
     return out
@@ -46,10 +46,10 @@ def save_crops(img, boxes, base, out_folder):
 
 def detect(img, cfg):
     H, W = img.shape[:2]
-    edges = preprocess(img, cfg["clahe_clip"], cfg["clahe_grid"])
+    edges = preprocess(img, cfg["clahe_clip"], cfg["clahe_grid"], cfg["gauss_kernel"], cfg["canny_low"], cfg["canny_high"])
     area = H * W
 
-    cands = find_candidates(edges, area, *cfg["area_range"])
+    cands = find_candidates(edges, area, *cfg["area_range"], cfg["approx_eps"])
     boxes = filter_aspect(cands, *cfg["aspect_range"])
 
     vis = img.copy()
