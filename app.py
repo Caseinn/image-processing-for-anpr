@@ -17,7 +17,15 @@ from detector.core import detect
 
 
 def to_rgb(img: np.ndarray) -> np.ndarray:
-    """Convert BGR or grayscale image to RGB for display."""
+    """Convert a BGR or grayscale image to RGB for display.
+
+    Args:
+        img: Input image in BGR (3-channel) or grayscale (2D) format.
+
+    Returns:
+        Image in RGB format suitable for Gradio/matplotlib display.
+        Returns ``None`` unchanged.
+    """
     if img is None:
         return img
     if len(img.shape) == 2:
@@ -26,14 +34,36 @@ def to_rgb(img: np.ndarray) -> np.ndarray:
 
 
 def to_bgr(img: np.ndarray) -> np.ndarray:
-    """Convert RGB image (from Gradio) to BGR for OpenCV processing."""
+    """Convert an RGB image to BGR for OpenCV processing.
+
+    Args:
+        img: Input image in RGB format (from Gradio).
+
+    Returns:
+        Image in BGR format.
+    """
     return cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
 
 def build_pipeline_steps(
     img_bgr: np.ndarray, cfg: dict
 ) -> Tuple[List[Tuple[str, np.ndarray]], List[Tuple[np.ndarray, Tuple[int, int, int, int]]]]:
-    """Run detection via core.detect and build step visualizations from pipeline data."""
+    """Build step-by-step visualizations from the detection pipeline.
+
+    Delegates actual detection to :func:`detector.core.detect` and
+    creates annotated images for each processing stage (grayscale,
+    CLAHE, blur, edges, contours, candidates, final boxes, crop).
+
+    Args:
+        img_bgr: Input BGR image.
+        cfg: Configuration dictionary.
+
+    Returns:
+        Tuple of:
+            - steps: List of ``(label, RGB_image)`` for each stage.
+            - boxes: List of ``(contour, (x, y, w, h))`` for detected
+              plates.
+    """
     _, boxes, pipeline = detect(img_bgr, cfg)
 
     steps: List[Tuple[str, np.ndarray]] = []
@@ -69,7 +99,24 @@ def build_pipeline_steps(
 def run_extraction(
     image: np.ndarray,
 ) -> Tuple[np.ndarray, List[Tuple[np.ndarray, str]], List[Tuple[np.ndarray, str]], List[List[float]], str]:
-    """Callback for Gradio: process one image and return visuals plus metadata."""
+    """Process a single image and return all Gradio visualizations.
+
+    This is the callback function bound to the Gradio UI's "Run
+    Extraction" button.
+
+    Args:
+        image: Input RGB image from the Gradio upload component.
+
+    Returns:
+        Tuple of:
+            - annotated_rgb: Image with green bounding boxes drawn on
+              detections.
+            - crops: List of ``(crop_RGB, label)`` for gallery display.
+            - step_gallery: List of ``(step_RGB, label)`` for pipeline
+              steps gallery.
+            - rows: Table rows with ``[id, x, y, w, h, aspect]``.
+            - status: Status message string.
+    """
     if image is None:
         return None, [], [], [], "Upload an image to start."
 
@@ -82,7 +129,6 @@ def run_extraction(
     crops: List[Tuple[np.ndarray, str]] = []
     rows: List[List[float]] = []
 
-    # Iterate over final boxes and collect metadata
     for idx, (_, (x, y, w, h)) in enumerate(boxes, start=1):
         roi = bgr[y : y + h, x : x + w]
         if roi.size == 0:
@@ -94,7 +140,6 @@ def run_extraction(
 
         cv2.rectangle(annotated, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-    # Convert steps to Gallery format: (image, label)
     step_gallery = [(img, title) for title, img in steps]
     annotated_rgb = to_rgb(annotated)
 

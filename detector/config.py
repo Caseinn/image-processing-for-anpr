@@ -1,6 +1,18 @@
-# detector/config.py
+"""Central configuration for the ANPR pipeline.
+
+All tunable parameters are defined here so they can be adjusted
+without modifying detection logic.
+"""
+
 
 def load_config():
+    """Return a dictionary of pipeline configuration values.
+
+    Returns:
+        dict: Configuration keys including file paths, image extensions,
+            area and aspect ratio ranges, CLAHE parameters, Canny edge
+            thresholds, approximation epsilon, and evaluation IoU threshold.
+    """
     return {
         "images_dir": "data/images",
         "labels_dir": "data/labels",

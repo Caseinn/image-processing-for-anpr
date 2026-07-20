@@ -1,11 +1,29 @@
+"""Batch runner for the ANPR pipeline.
+
+Processes all images in the configured input directory, saves detected
+plate crops, and prints/saves aggregate precision/recall/F1 metrics.
+"""
+
 import os
+import cv2
+
 from .config import load_config
 from .io import ensure_dir, load_images, write_csv
 from .core import detect, save_crops
 from .eval import load_labels, match, metrics
-import cv2
+
 
 def run():
+    """Execute the full ANPR pipeline over the configured image set.
+
+    For each image:
+        1. Run plate detection via :func:`detector.core.detect`.
+        2. Save extracted plate crops as PNG files.
+        3. Evaluate detections against ground-truth labels.
+        4. Aggregate results and write a report to ``output/eval.txt``.
+
+    Pipeline configuration is loaded from :func:`detector.config.load_config`.
+    """
     cfg = load_config()
 
     ensure_dir(cfg["out_dir"])
@@ -23,11 +41,9 @@ def run():
         vis, boxes, _ = detect(img, cfg)
         det_boxes = [(x, y, x + w, y + h) for _, (x, y, w, h) in boxes]
 
-        # save crops
         saved = save_crops(img, boxes, name, crop_dir)
         all_pairs.extend(saved)
 
-        # evaluate
         label_path = os.path.join(cfg["labels_dir"], name + ".txt")
         H, W = img.shape[:2]
         gt = load_labels(label_path, W, H)
@@ -41,10 +57,8 @@ def run():
         }
         eval_rows.append(row)
 
-    # save crop list
     write_csv(all_pairs, os.path.join(cfg["out_dir"], "crops.csv"))
 
-    # compute metrics
     stats = metrics(eval_rows)
     thr = cfg["iou_thr"]
 
@@ -64,10 +78,8 @@ F1-Score: {stats['f1']:.4f}
 Mean IoU: {stats['mean_iou']:.4f}
 """
 
-    # print to console
     print(report)
 
-    # save to eval.txt
     eval_path = os.path.join(cfg["out_dir"], "eval.txt")
     with open(eval_path, "w", encoding="utf-8") as f:
         f.write(report)
