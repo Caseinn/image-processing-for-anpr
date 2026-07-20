@@ -1,216 +1,184 @@
-# Automatic Number Plate Recognition (ANPR) System
-## Sistem Deteksi Plat Nomor Otomatis menggunakan Image Processing
+# ANPR — Deteksi Plat Nomor dengan Image Processing Klasik
 
-### Overview / Gambaran Umum
+<p>
+  <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" alt="Python">
+  <img src="https://img.shields.io/badge/OpenCV-4.8%2B-green?logo=opencv" alt="OpenCV">
+  <img src="https://img.shields.io/badge/FastAPI-0.110%2B-009688?logo=fastapi" alt="FastAPI">
+  <img src="https://img.shields.io/badge/Astro-5-FF5D01?logo=astro" alt="Astro">
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React">
+  <img src="https://img.shields.io/badge/license-MIT-yellow" alt="License">
+</p>
 
-This project implements an Automatic Number Plate Recognition (ANPR) system using image processing techniques. The system can detect and extract license plate numbers from vehicle images.
+Pipeline deteksi plat nomor kendaraan berbasis contour detection dan geometric filtering. Pure OpenCV, zero ML.
 
-Proyek ini mengimplementasikan sistem deteksi plat nomor otomatis menggunakan teknik computer vision dan image processing. Sistem dapat mendeteksi dan mengekstrak nomor plat kendaraan dari gambar atau frame video.
+## Latar Belakang
 
-### Pipeline / Alur Proses
+Buat apa susah-susah pake computer vision klasik kalo tinggal colok YOLO? Karena ini proyek edukasi — demonstrasi bahwa teknik dasar image processing masih relevan dan penting dipahami. Grayscale, adaptive histogram, edge detection, contour analysis — semuanya dijalankan tanpa training, tanpa inference, tanpa model weights.
+
+Setiap tahap pipeline bisa divisualisasikan dan parameternya bisa diotak-atik langsung. Cocok buat mahasiswa, engineer yang mau belajar CV, atau siapapun yang penasaran gimana plate detection bekerja dari sisi algorithmic.
+
+> **Bukan production-grade.** Ini murni rule-based. Kalo butuh akurasi tinggi, pake YOLO atau model terlatih lainnya.
+
+## Cara Pakai
+
+### Prasyarat
+
+- Python 3.10+
+- Node.js 18+ & npm
+
+### Backend
+
+```bash
+cd backend
+python -m venv venv
+```
+
+Aktifin virtual environment:
+
+```bash
+# Windows
+venv\Scripts\activate
+# macOS / Linux
+source venv/bin/activate
+```
+
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+Server jalan di `http://localhost:8000`.
+
+| Endpoint | Fungsi |
+|---|---|
+| `POST /api/detect` | Upload gambar → JSON (annotated image, pipeline steps, bounding boxes, crop hasil) |
+| `GET /` | Health check |
+| `/docs` | Swagger UI |
+
+Test pake curl:
+
+```bash
+curl -X POST -F "file=@plat.jpg" http://localhost:8000/api/detect
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Buka `http://localhost:5173`. Upload gambar atau pilih dari sample. Pipeline jalan otomatis, setiap step divisualisasikan.
+
+### Batch Processing
+
+Jalanin deteksi ke 100 gambar uji sekaligus:
+
+```bash
+cd backend
+python -c "from detector.runner import run; run()"
+```
+
+Hasilnya:
+
+- `output/eval.txt` — metrik global: IoU, precision, recall, F1
+- `output/crops/` — region plat yang terdeteksi (file PNG)
+- `output/crops.csv` — daftar source-crop pairs
+
+Evaluasi pakai YOLO-format ground truth dari `data/labels/`. Setiap deteksi dihitung true positive kalo IoU-nya ≥ 0.5.
+
+## Pipeline
 
 ```
-[Input Image]
-      ↓
-[Grayscale] → reduce channels
-      ↓
-[CLAHE] → enhance contrast
-      ↓
-[Gaussian Blur] → denoise + keep edges
-      ↓
-[Canny Edge Detector] → binary edges
-      ↓
-[Find Contours] → extract shapes
-      ↓
-[Filter by Area + Approximate to 4 corners]
-      ↓
-[Filter by Aspect Ratio (2–8)] → plate dimensions
-      ↓
-[Crop ROI (x, y, w, h)] → extract plate region
+Input → Grayscale → CLAHE → Gaussian Blur → Canny → Contours → Area Filter → Quadrilateral Approx → Aspect Filter → Crop
 ```
 
+| # | Langkah | Penjelasan |
+|---|---|---|
+| 1 | **Grayscale** | `cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)`. Warna gak relevan buat deteksi tepi, buang aja. |
+| 2 | **CLAHE** | `createCLAHE(clipLimit=2.0, tileGridSize=(8,8))`. Adaptive contrast enhancement biar karakter plat lebih keliatan, terutama kalo pencahayaan gak merata. |
+| 3 | **Gaussian Blur** | `GaussianBlur(kernel_size=5)`. Buang noise frekuensi tinggi yang bisa bikin false edges pas Canny. |
+| 4 | **Canny Edge** | `Canny(threshold1=50, threshold2=150)`. Piksel dengan gradien di atas 150 jadi edge, di bawah 50 dibuang, sisanya tergantung konektivitas. |
+| 5 | **Find Contours** | `findContours(mode=RETR_EXTERNAL)`. Ambil contour terluar dari edge map. RETR_EXTERNAL ngambil contour paling luar aja, biar contour di dalamnya (misalnya karakter plat) gak ikut. |
+| 6 | **Area Filter** | Kontur dengan luas di luar `[0.05%, 5%]` dari total area gambar langsung dibuang. |
+| 7 | **Quadrilateral Approx** | `approxPolyDP(epsilon=0.02 × perimeter)`. Plat nomor bentuknya rectangle → contour harus punya tepat 4 vertices dan convex. |
+| 8 | **Aspect Filter** | `2.0 < width/height < 8.0`. Bentuk yang gak sesuai rasio plat nomor kefilter. |
+| 9 | **Crop** | `minAreaRect` → warp. Potong dan luruskan region plat pake perspective transform. |
 
-###  Detailed Process Explanation / Penjelasan Detail Proses
+## Konfigurasi
 
-#### 1. **Input Image / Input Gambar**
+Semua parameter di `backend/detector/config.py`:
 
-* **Deskripsi**: Sistem menerima gambar (JPG/PNG) atau frame dari video (MP4/AVI) sebagai masukan.
-* **Tujuan**: Menjadi sumber utama untuk mendeteksi dan mengenali plat nomor kendaraan.
+| Parameter | Default | Fungsi |
+|---|---|---|
+| `clahe_clip` | 2.0 | Kontrol kontras CLAHE |
+| `clahe_grid` | 8 | Ukuran tile grid |
+| `gauss_kernel` | 5 | Kernel size Gaussian blur (harus ganjil) |
+| `canny_low` | 50 | Threshold bawah Canny |
+| `canny_high` | 200 | Threshold atas Canny |
+| `area_range` | (0.0005, 0.3) | Rentang luas kontur relatif terhadap frame |
+| `aspect_range` | (2.0, 8.0) | Rentang rasio lebar/tinggi |
+| `approx_eps` | 0.02 | Epsilon buat approxPolyDP |
+| `iou_thr` | 0.5 | Threshold IoU pas evaluasi |
 
+Kalo hasil deteksi kurang memuaskan:
 
-#### 2. **Grayscale Conversion / Konversi Grayscale**
+| Masalah | Parameter | Arah |
+|---|---|---|
+| Banyak false contours | `canny_low` | Naikkin |
+| Tepi plat putus-putus | `canny_low` / `canny_high` | Turunin |
+| Plat kegedean/kekecilan | `area_range` | Sesuaikan |
+| Objek persegi lolos | `aspect_range` | Persempit |
+| Kontras kurang | `clahe_clip` | Naikkin (3.0–4.0) |
+| Terlalu noisy | `gauss_kernel` | Naikkin (7 atau 9) |
 
-* **Tujuan**: Mengurangi jumlah channel dari RGB (3 channel) menjadi grayscale (1 channel).
-* **Metode**: Menggunakan rumus weighted average: `Gray = 0.299R + 0.587G + 0.114B`.
-* **Manfaat**: Mempercepat komputasi dan meningkatkan efisiensi deteksi tepi.
+## Mode Kegagalan
 
+Ini pure contour-based, jadi banyak batasnya. Scenario yang hampir pasti fail:
 
-#### 3. **CLAHE (Contrast Limited Adaptive Histogram Equalization)**
+| Skenario | Root Cause |
+|---|---|
+| Plat miring / angle jelek | approxPolyDP gagal dapet 4 corners |
+| Pencahayaan minim | Canny gak dapet gradient cukup kuat |
+| Overexposed / blown-out | Too many false edges dari sensor noise |
+| Plat kotor / berkarat | Edges putus, contour pecah |
+| Latar kompleks (pohon, pagar, iklan) | Ratusan contour lolos filter |
+| Motion blur | Edges jadi terlalu lebar, Canny kacau |
+| Silau lensa | CLAHE gak bisa ngembaliin blown-out highlights |
+| Plat terlalu kecil / jauh | Kefilter sama area_range |
+| Multiple vehicles | Hanya detek kandidat terkuat |
+| Plat gelap di body gelap | Kontras terlalu rendah |
 
-* **Tujuan**: Meningkatkan kontras lokal agar karakter pada plat lebih jelas.
-* **Keunggulan**:
+## Struktur Proyek
 
-  * Tidak over-enhance seperti histogram global.
-  * Efektif di kondisi pencahayaan tidak merata (bayangan, pantulan).
-
-
-#### 4. **Gaussian Blur / Perataan Gaussian**
-
-* **Tujuan**: Mengurangi noise sembari mempertahankan struktur tepi (edge).
-* **Metode**: Kernel Gaussian 3×3 atau 5×5.
-* **Hasil**: Gambar lebih halus tanpa kehilangan kontur utama.
-
-
-#### 5. **Canny Edge Detection / Deteksi Tepi Canny**
-
-* **Tujuan**: Mengubah hasil blur menjadi **binary edge map** (hitam-putih).
-* **Parameter**: Dua ambang batas (lower & upper threshold) untuk mendeteksi tepi kuat dan lemah.
-* **Hasil**: Tepi objek, termasuk bentuk persegi panjang plat, menjadi terlihat jelas.
-
-#### 6. **Find Contours / Mencari Kontur**
-
-* **Tujuan**: Mengekstrak batas-batas bentuk dari gambar biner hasil deteksi tepi.
-* **Metode**: Menggunakan algoritma `cv2.findContours()` untuk mendapatkan list koordinat tiap bentuk.
-* **Output**: Daftar kontur kandidat yang mungkin berisi plat nomor.
-
-
-#### 7. **Filter by Area & Approximation / Filter Area & Aproksimasi Sudut**
-
-* **Langkah 1 – Filter Area**: Menghapus kontur yang terlalu kecil/besar dibanding ukuran frame.
-* **Langkah 2 – Approximation**: Menyederhanakan kontur jadi polygon dengan 4 sudut (`cv2.approxPolyDP`).
-* **Tujuan**: Menemukan bentuk persegi panjang yang menyerupai plat nomor.
-
-
-#### 8. **Filter by Aspect Ratio / Filter Rasio Aspek**
-
-* **Tujuan**: Memastikan bentuk kandidat sesuai rasio plat kendaraan.
-* **Range Ideal**: 2:1 hingga 8:1 (lebar : tinggi).
-* **Contoh**:
-
-  * Plat Indonesia ≈ 4:1
-  * Plat Eropa ≈ 5:1
-
-
-#### 9. **Crop ROI (Region of Interest) / Pemotongan Area Plat**
-
-* **Tujuan**: Mengambil area koordinat (x, y, w, h) dari plat yang telah lolos filter.
-* **Output**: Gambar kecil berisi hanya plat nomor, siap diproses OCR.
-
----
-
-### **Challenges / Tantangan**
-
-#### 1. **Variasi Pencahayaan (Lighting Variation)**
-
-* **Masalah**: Gambar terlalu terang (overexposed) atau terlalu gelap (underexposed).
-* **Dampak pada Image Processing**: 
-  * CLAHE bisa over-enhance dan menciptakan noise buatan
-  * Canny edge detection gagal menemukan tepi karena kontras rendah
-  * Thresholding menghasilkan binary image yang buruk
-
-#### 2. **Sudut Pandang (Perspective Distortion)**
-
-* **Masalah**: Plat nomor tampak miring atau terdistorsi karena posisi kamera.
-* **Dampak pada Image Processing**:
-  * Contour approximation gagal menghasilkan 4 corners
-  * Aspect ratio filtering menolak plat yang valid
-  * Karakter terdistorsi sehingga OCR gagal
-
-#### 3. **Noise pada Gambar (Image Noise)**
-
-* **Masalah**: Gangguan visual seperti bintik atau blur akibat pencahayaan rendah atau kamera bergerak.
-* **Dampak pada Image Processing**:
-  * Gaussian blur menghilangkan detail penting karakter
-  * Canny edge mendeteksi false edges dari noise
-  * Morphological closing tidak efektif menyambungkan edges yang benar
-
-#### 4. **Plat Kotor atau Rusak (Dirty or Damaged Plates)**
-
-* **Masalah**: Karakter sulit terbaca karena debu, lumpur, atau kerusakan fisik.
-* **Dampak pada Image Processing**:
-  * Edge detection terputus-putus
-  * Morphological operations mengubah bentuk karakter asli
-  * ROI yang di-crop mengandung banyak artifacts
-
-#### 5. **Multiple Plates dalam Satu Gambar (Multiple Plates per Frame)**
-
-* **Masalah**: Lebih dari satu kendaraan muncul dalam satu frame.
-* **Dampak pada Image Processing**:
-  * Find contours mendeteksi banyak kandidat
-  * Perlu additional filtering logic untuk memilih plat yang benar
-  * Computational cost meningkat untuk processing semua kandidat
-
-#### 6. **Refleksi dan Glare (Reflections and Glare)**
-
-* **Masalah**: Pantulan cahaya matahari atau lampu pada permukaan plat nomor yang mengkilap.
-* **Dampak pada Image Processing**:
-  * Area terang ekstrim menyebabkan loss of detail
-  * CLAHE tidak efektif pada area over-saturated
-  * Edge detection gagal pada region yang blown-out
-
-#### 7. **Bayangan (Shadows)**
-
-* **Masalah**: Bayangan dari frame plat atau objek lain menutupi sebagian karakter.
-* **Dampak pada Image Processing**:
-  * Kontras tidak merata antara area bayangan dan terang
-  * Thresholding tidak optimal untuk seluruh region
-  * Edge detection menghasilkan discontinuous edges
-
-#### 8. **Motion Blur**
-
-* **Masalah**: Kendaraan bergerak cepat menghasilkan blur pada plat nomor.
-* **Dampak pada Image Processing**:
-  * Edges menjadi tidak tajam dan lebar
-  * Gaussian blur memperburuk keadaan
-  * Canny threshold perlu disesuaikan tetapi menimbulkan false positives
-
-#### 9. **Kontras Rendah antara Karakter dan Background (Low Contrast)**
-
-* **Masalah**: Warna karakter dan background plat terlalu mirip.
-* **Dampak pada Image Processing**:
-  * CLAHE kurang efektif meningkatkan separation
-  * Edge detection gagal menemukan boundary karakter
-  * Binary thresholding tidak bisa memisahkan foreground/background
-
-#### 10. **Ukuran Plat Terlalu Kecil atau Besar (Scale Variation)**
-
-* **Masalah**: Plat nomor terlalu kecil (jauh) atau terlalu besar (dekat) dalam frame.
-* **Dampak pada Image Processing**:
-  * Area filtering menolak plat yang terlalu kecil/besar
-  * Resolution ROI terlalu rendah untuk OCR
-  * Edge detection parameter tidak universal untuk semua scale
-
-#### 11. **Background Noise Kompleks (Cluttered Background)**
-
-* **Masalah**: Background ramai dengan objek, teks, atau pattern lain.
-* **Dampak pada Image Processing**:
-  * Find contours mendeteksi ratusan false positives
-  * Area dan aspect ratio filtering tidak cukup untuk eliminasi
-  * Processing time meningkat drastis
-
-#### 12. **Tekstur Plat yang Beragam (Plate Texture Variation)**
-
-* **Masalah**: Plat embossed, printed, atau dengan coating berbeda.
-* **Dampak pada Image Processing**:
-  * Edge detection menghasilkan double edges pada embossed plates
-  * Refleksi berbeda-beda memerlukan adaptive preprocessing
-  * Single parameter set tidak optimal untuk semua jenis
-
-
-#### 13. **Oklusif Parsial (Partial Occlusion)**
-
-* **Masalah**: Sebagian plat tertutup bumper, stiker, atau objek lain.
-* **Dampak pada Image Processing**:
-  * Contour tidak membentuk rectangle lengkap
-  * Area filtering bisa menolak plat yang valid
-  * ROI yang di-crop incomplete
-
-#### 14. **Variasi Warna Plat (Color Variation)**
-
-* **Masalah**: Plat hitam, kuning, merah, putih memiliki karakteristik berbeda.
-* **Dampak pada Image Processing**:
-  * Grayscale conversion menghasilkan kontras berbeda per warna
-  * Single threshold/parameter tidak optimal untuk semua
-  * Perlu adaptive processing berdasarkan color analysis
-
----
+```
+├── main.py                  # Entry point batch processing
+├── backend/
+│   ├── main.py              # FastAPI server
+│   ├── requirements.txt
+│   ├── detector/
+│   │   ├── core.py          # Pipeline utama
+│   │   ├── config.py        # Parameter
+│   │   ├── runner.py        # Batch processing + evaluasi
+│   │   ├── eval.py          # IoU, precision, recall, F1
+│   │   ├── io.py            # I/O file
+│   │   └── __init__.py
+│   └── __init__.py
+├── frontend/
+│   ├── src/
+│   │   ├── components/      # React components (kebab-case)
+│   │   ├── pages/           # index.astro, 404.astro
+│   │   └── styles/          # Tailwind v4 global.css
+│   ├── public/samples/      # Gambar sample buat testing frontend
+│   ├── package.json
+│   ├── astro.config.mjs
+│   └── tsconfig.json
+├── data/
+│   ├── images/              # 100 gambar uji (test001–test100)
+│   └── labels/              # Ground truth format YOLO
+└── output/                  # Hasil batch evaluation
+    ├── crops/               # Region plat yang terdeteksi
+    ├── crops.csv
+    └── eval.txt
+```
